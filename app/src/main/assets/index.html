@@ -8,63 +8,65 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+<div class="app">
+  <!-- TOP TOOLBAR -->
+  <header class="toolbar">
+    <div class="tb-left">
+      <span class="tb-title" id="schemeTitle">未命名方案</span>
+      <span class="tb-dirty" id="dirtyDot" style="display:none">●</span>
+      <span class="tb-storage" id="storageInfo">检测中…</span>
+    </div>
+    <div class="tb-right">
+      <button class="tb-btn" id="resetBtn" title="重设当前方案">重设</button>
+      <button class="tb-btn" id="saveBtn" title="保存为新方案">保存</button>
+      <button class="tb-btn primary" id="manageBtn" title="管理方案">方案</button>
+    </div>
+  </header>
 
-<!-- TOOLBAR -->
-<header class="toolbar" id="toolbar">
-  <div class="tb-left">
-    <span class="tb-title" id="schemeTitle">未命名方案</span>
-    <span class="tb-dirty" id="dirtyDot" style="display:none">●</span>
-  </div>
-  <div class="tb-right">
-    <button class="tb-btn" id="newBtn">新建</button>
-    <button class="tb-btn" id="saveBtn">保存</button>
-    <button class="tb-btn primary" id="manageBtn">方案</button>
-  </div>
-</header>
+  <!-- MAIN STAGE -->
+  <div class="stage">
+    <!-- TOP CORNERS -->
+    <div class="corner top-left">
+      <div class="corner-box red" contenteditable="true" data-placeholder="上层" data-key="topLeft"></div>
+      <div class="arrow up"></div>
+    </div>
+    <div class="corner top-right">
+      <div class="corner-box red" contenteditable="true" data-placeholder="上层" data-key="topRight"></div>
+      <div class="arrow up"></div>
+    </div>
 
-<!-- DIAMOND -->
-<div class="diamond-wrap">
-  <!-- TOP CORNERS -->
-  <div class="corner top-left">
-    <div class="arrow up"></div>
-    <div class="corner-box red" contenteditable="true" data-placeholder="上层" data-key="topLeft"></div>
-  </div>
-  <div class="corner top-right">
-    <div class="arrow up"></div>
-    <div class="corner-box red" contenteditable="true" data-placeholder="上层" data-key="topRight"></div>
-  </div>
+    <!-- DIAMOND -->
+    <div class="diamond" id="diamond">
+      <div class="level" data-level="1"></div>
+      <div class="level" data-level="2"></div>
+      <div class="level" data-level="3"></div>
+      <div class="level" data-level="4"></div>
+      <div class="level widest" data-level="5"></div>
+      <div class="level" data-level="6"></div>
+      <div class="level" data-level="7"></div>
+      <div class="level" data-level="8"></div>
+      <div class="level" data-level="9"></div>
+    </div>
 
-  <!-- CENTER DIAMOND -->
-  <div class="diamond" id="diamond">
-    <div class="level top" data-level="1"></div>
-    <div class="level top" data-level="2"></div>
-    <div class="level top" data-level="3"></div>
-    <div class="level top" data-level="4"></div>
-    <div class="level top widest" data-level="5"></div>
-    <div class="level bottom" data-level="6"></div>
-    <div class="level bottom" data-level="7"></div>
-    <div class="level bottom" data-level="8"></div>
-    <div class="level bottom" data-level="9"></div>
+    <!-- BOTTOM CORNERS -->
+    <div class="corner bottom-left">
+      <div class="arrow down"></div>
+      <div class="corner-box red" contenteditable="true" data-placeholder="下层" data-key="bottomLeft"></div>
+    </div>
+    <div class="corner bottom-right">
+      <div class="arrow down"></div>
+      <div class="corner-box red" contenteditable="true" data-placeholder="下层" data-key="bottomRight"></div>
+    </div>
   </div>
 
-  <!-- BOTTOM CORNERS -->
-  <div class="corner bottom-left">
-    <div class="corner-box red" contenteditable="true" data-placeholder="下层" data-key="bottomLeft"></div>
-    <div class="arrow down"></div>
-  </div>
-  <div class="corner bottom-right">
-    <div class="corner-box red" contenteditable="true" data-placeholder="下层" data-key="bottomRight"></div>
-    <div class="arrow down"></div>
+  <!-- BOTTOM TRAY -->
+  <div class="tray" id="tray">
+    <div class="tray-items" id="trayItems"></div>
+    <button class="add-btn" id="addBtn" aria-label="添加小方块">+</button>
   </div>
 </div>
 
-<!-- TRAY -->
-<div class="tray" id="tray">
-  <div class="tray-items" id="trayItems"></div>
-  <button class="add-btn" id="addBtn" aria-label="添加小方块">+</button>
-</div>
-
-<!-- MODAL (outside all containers so z-index works correctly) -->
+<!-- SCHEMES MODAL -->
 <div class="modal-mask" id="modalMask" style="display:none">
   <div class="modal" role="dialog" aria-label="方案管理">
     <div class="modal-head">
@@ -82,9 +84,6 @@
         <button class="tb-btn primary" id="createSchemeBtn">创建</button>
       </div>
       <div class="scheme-list" id="schemeList"></div>
-    </div>
-    <div class="modal-foot">
-      <span class="storage-info" id="storageInfo">检测中...</span>
     </div>
   </div>
 </div>
