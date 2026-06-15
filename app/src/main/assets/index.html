@@ -8,20 +8,21 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-<div class="app">
-  <!-- TOP TOOLBAR -->
-  <header class="toolbar" id="toolbar">
-    <div class="tb-left">
-      <span class="tb-title" id="schemeTitle">未命名方案</span>
-      <span class="tb-dirty" id="dirtyDot" style="display:none">●</span>
-    </div>
-    <div class="tb-right">
-      <button class="tb-btn" id="newBtn" title="新建方案">新建</button>
-      <button class="tb-btn" id="saveBtn" title="保存为新方案">保存</button>
-      <button class="tb-btn primary" id="manageBtn" title="管理方案">方案</button>
-    </div>
-  </header>
+<!-- TOOLBAR (fixed top) -->
+<header class="toolbar" id="toolbar">
+  <div class="tb-left">
+    <span class="tb-title" id="schemeTitle">未命名方案</span>
+    <span class="tb-dirty" id="dirtyDot" style="display:none">●</span>
+  </div>
+  <div class="tb-right">
+    <button class="tb-btn" id="newBtn">新建</button>
+    <button class="tb-btn" id="saveBtn">保存</button>
+    <button class="tb-btn primary" id="manageBtn">方案</button>
+  </div>
+</header>
 
+<!-- MAIN CONTENT -->
+<div class="main-content">
   <!-- TOP CORNERS -->
   <div class="corner top-left">
     <div class="arrow up"></div>
@@ -32,7 +33,7 @@
     <div class="corner-box red" contenteditable="true" data-placeholder="上层" data-key="topRight"></div>
   </div>
 
-  <!-- DIAMOND / PYRAMID -->
+  <!-- DIAMOND -->
   <div class="diamond-wrap">
     <div class="diamond" id="diamond">
       <div class="level top" data-level="1"></div>
@@ -60,7 +61,7 @@
   <!-- BOTTOM TRAY -->
   <div class="tray" id="tray">
     <div class="tray-items" id="trayItems"></div>
-    <button class="add-btn" id="addBtn" aria-label="add">+</button>
+    <button class="add-btn" id="addBtn" aria-label="添加小方块">+</button>
   </div>
 </div>
 
@@ -69,7 +70,7 @@
   <div class="modal" role="dialog" aria-label="方案管理">
     <div class="modal-head">
       <span class="modal-title">方案管理</span>
-      <button class="modal-close" id="modalClose" aria-label="close">×</button>
+      <button class="modal-close" id="modalClose" aria-label="关闭">×</button>
     </div>
     <div class="modal-body">
       <div class="scheme-create">

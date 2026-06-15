@@ -8,7 +8,6 @@
   // ============= DOM refs =============
   const trayItems = document.getElementById("trayItems");
   const addBtn = document.getElementById("addBtn");
-  const diamond = document.getElementById("diamond");
   const schemeTitle = document.getElementById("schemeTitle");
   const dirtyDot = document.getElementById("dirtyDot");
   const newBtn = document.getElementById("newBtn");
@@ -23,7 +22,7 @@
 
   // ============= State =============
   let chipCounter = 0;
-  let currentSchemeId = null;  // null = unsaved working state
+  let currentSchemeId = null;
   let currentSchemeName = "未命名方案";
   let isDirty = false;
 
@@ -31,14 +30,18 @@
   let dragChip = null;
   let ghost = null;
   let ghostW = 0, ghostH = 0;
-  let dragOriginParent = null;   // parent node before drag started
-  let dragOriginNext = null;     // nextSibling before drag started
+  let dragOriginParent = null;
+  let dragOriginNext = null;
   let dragOffsetX = 0, dragOffsetY = 0;
   let lastX = 0, lastY = 0;
   let rafId = 0;
   let lastHoverEl = null;
-  let pressTimer = 0;            // long-press timer for showing delete X
+  let pressTimer = 0;
   let longPressed = false;
+
+  // double-click debounce
+  let lastClickTime = 0;
+  let lastClickChip = null;
 
   // ============= Persistence =============
   function loadSchemes() {
@@ -83,13 +86,7 @@
       const t = c.querySelector(".chip-text");
       chips.push({ id: c.dataset.id, text: t ? t.textContent : "", loc: loc });
     });
-    return {
-      id: currentSchemeId,
-      name: currentSchemeName,
-      corners: corners,
-      chips: chips,
-      ts: Date.now()
-    };
+    return { id: currentSchemeId, name: currentSchemeName, corners: corners, chips: chips, ts: Date.now() };
   }
 
   function clearChips() {
@@ -117,7 +114,7 @@
         const chip = makeChip();
         const t = chip.querySelector(".chip-text");
         if (t) t.textContent = c.text || "";
-        const idNum = parseInt(String(c.id || "").replace(/[^0-9]/g, ""), 10);
+        var idNum = parseInt(String(c.id || "").replace(/[^0-9]/g, ""), 10);
         if (!isNaN(idNum) && idNum > chipCounter) chipCounter = idNum;
         if (c.loc && c.loc.indexOf("level:") === 0) {
           const lvl = c.loc.split(":")[1];
@@ -159,19 +156,16 @@
     const x = document.createElement("span");
     x.className = "chip-x";
     x.textContent = "×";
-    x.addEventListener("mousedown", function (e) { e.stopPropagation(); });
-    x.addEventListener("touchstart", function (e) { e.stopPropagation(); }, { passive: true });
     x.addEventListener("click", function (e) {
       e.stopPropagation();
+      e.preventDefault();
       if (chip.parentNode) chip.parentNode.removeChild(chip);
       markDirty();
       saveCurrent();
     });
     chip.appendChild(x);
 
-    // editing text -> mark dirty
     txt.addEventListener("input", function () { markDirty(); saveCurrent(); });
-    txt.addEventListener("focus", function () { clearLongPress(); });
 
     attachDragHandlers(chip);
     return chip;
@@ -182,10 +176,13 @@
     trayItems.appendChild(chip);
     markDirty();
     saveCurrent();
+    // auto-focus the new chip's text
+    var t = chip.querySelector(".chip-text");
+    if (t) { chip.classList.add("editing"); t.focus(); }
   }
   addBtn.addEventListener("click", addChip);
 
-  // ============= Drag handlers (mouse + touch unified) =============
+  // ============= Drag handlers - CLICK = DRAG, DBLCLICK = EDIT =============
   function clearLongPress() {
     if (pressTimer) { clearTimeout(pressTimer); pressTimer = 0; }
     if (longPressed) {
@@ -194,7 +191,7 @@
     }
   }
 
-  function isTextEditableTarget(t) {
+  function isTextTarget(t) {
     return t && t.classList && t.classList.contains("chip-text");
   }
   function isDeleteBtnTarget(t) {
@@ -202,48 +199,54 @@
   }
 
   function startDrag(chip, clientX, clientY) {
+    clearLongPress();
     dragChip = chip;
     chip.classList.add("dragging");
+
+    // hide delete X while dragging
+    chip.classList.remove("show-x");
+
     dragOriginParent = chip.parentNode;
     dragOriginNext = chip.nextSibling;
 
-    // build ghost (transform-based, GPU)
     ghost = document.createElement("div");
     ghost.className = "drag-ghost";
     ghost.textContent = chipText(chip);
     document.body.appendChild(ghost);
-    const gRect = ghost.getBoundingClientRect();
+    var gRect = ghost.getBoundingClientRect();
     ghostW = gRect.width || 60;
-    ghostH = gRect.height || 32;
+    ghostH = gRect.height || 30;
 
-    // position ghost at pointer
+    var chipRect = chip.getBoundingClientRect();
+    dragOffsetX = clientX - chipRect.left;
+    dragOffsetY = clientY - chipRect.top;
+
     updateGhost(clientX, clientY);
   }
 
   function updateGhost(clientX, clientY) {
     if (!ghost) return;
-    const x = clientX - dragOffsetX + ghostW / 2;
-    const y = clientY - dragOffsetY + ghostH / 2;
+    var x = clientX - dragOffsetX + ghostW / 2;
+    var y = clientY - dragOffsetY + ghostH / 2;
     ghost.style.transform = "translate3d(" + x.toFixed(0) + "px, " + y.toFixed(0) + "px, 0) scale(1.05)";
   }
 
   function updateHover(clientX, clientY) {
-    if (dragChip) {
-      const el = document.elementFromPoint(clientX, clientY);
-      if (el !== lastHoverEl) {
-        if (lastHoverEl) {
-          const lLvl = lastHoverEl.closest && lastHoverEl.closest(".level");
-          if (lLvl) lLvl.classList.remove("drag-over");
-          const lTray = lastHoverEl.closest && lastHoverEl.closest("#tray");
-          if (lTray) lTray.classList.remove("drag-over");
-        }
-        lastHoverEl = el;
-        if (el) {
-          const lvl = el.closest && el.closest(".level");
-          if (lvl) lvl.classList.add("drag-over");
-          const tray = el.closest && el.closest("#tray");
-          if (tray) tray.classList.add("drag-over");
-        }
+    if (!dragChip) return;
+    var el = document.elementFromPoint(clientX, clientY);
+    if (el !== lastHoverEl) {
+      if (lastHoverEl) {
+        var lLvl = lastHoverEl.closest && lastHoverEl.closest(".level");
+        if (lLvl) lLvl.classList.remove("drag-over");
+        var lTray = lastHoverEl.closest && lastHoverEl.closest(".tray");
+        if (lTray) lTray.classList.remove("drag-over");
+      }
+      lastHoverEl = el;
+      if (el) {
+        var lvl = el.closest && el.closest(".level");
+        if (lvl) lvl.classList.add("drag-over");
+        var tray = el.closest && el.closest(".tray");
+        if (tray) tray.classList.add("drag-over");
       }
     }
   }
@@ -259,13 +262,13 @@
 
   function endDrag(clientX, clientY) {
     if (!dragChip) return;
-    const el = document.elementFromPoint(clientX, clientY);
-    let target = null;
+    var el = document.elementFromPoint(clientX, clientY);
+    var target = null;
     if (el) {
-      const lvl = el.closest && el.closest(".level");
+      var lvl = el.closest && el.closest(".level");
       if (lvl) target = lvl;
       else {
-        const tray = el.closest && el.closest("#tray");
+        var tray = el.closest && el.closest(".tray");
         if (tray) target = trayItems;
       }
     }
@@ -276,7 +279,6 @@
       dragChip.classList.remove("placed");
       trayItems.appendChild(dragChip);
     } else {
-      // revert
       if (dragOriginParent) {
         if (dragOriginParent.classList && dragOriginParent.classList.contains("level")) {
           dragChip.classList.add("placed");
@@ -302,7 +304,7 @@
     if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
     ghost = null;
     if (dragChip) dragChip.classList.remove("dragging");
-    document.querySelectorAll(".level.drag-over, #tray.drag-over").forEach(function (n) {
+    document.querySelectorAll(".level.drag-over, .tray.drag-over").forEach(function (n) {
       n.classList.remove("drag-over");
     });
     dragChip = null;
@@ -312,114 +314,170 @@
   }
 
   function chipText(chip) {
-    const t = chip.querySelector(".chip-text");
+    var t = chip.querySelector(".chip-text");
     return (t && t.textContent.trim()) || "文本";
   }
 
+  // DBLCLICK handler - edit chip text
+  function handleDblClick(chip, txt) {
+    chip.classList.add("editing");
+    txt.focus();
+    // select all text
+    var range = document.createRange();
+    range.selectNodeContents(txt);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
   function attachDragHandlers(chip) {
-    // shared start: record offset, set up listeners
-    function onDown(clientX, clientY, target, kind) {
-      if (isDeleteBtnTarget(target)) return;
-      if (isTextEditableTarget(target)) {
-        // not dragging, but still enable long-press for delete X
+    var txt = chip.querySelector(".chip-text");
+
+    // ---- Mouse click-to-drag ----
+    chip.addEventListener("mousedown", function (e) {
+      if (e.button !== 0) return;
+      if (isDeleteBtnTarget(e.target)) return;
+
+      var now = Date.now();
+      // double-click check
+      if (lastClickChip === chip && now - lastClickTime < 350) {
+        e.preventDefault();
+        e.stopPropagation();
+        lastClickTime = 0;
+        lastClickChip = null;
         clearLongPress();
-        pressTimer = setTimeout(function () {
-          longPressed = true;
-          document.querySelectorAll(".chip.show-x").forEach(function (n) {
-            if (n !== chip) n.classList.remove("show-x");
-          });
-          chip.classList.add("show-x");
-        }, 500);
+        handleDblClick(chip, txt);
         return;
       }
-      const startX = clientX, startY = clientY;
-      const rect = chip.getBoundingClientRect();
-      dragOffsetX = clientX - rect.left;
-      dragOffsetY = clientY - rect.top;
-      let moved = false;
+      lastClickTime = now;
+      lastClickChip = chip;
 
-      function onMove(ev, cX, cY) {
-        lastX = cX; lastY = cY;
+      if (isTextTarget(e.target)) return;
+
+      var startX = e.clientX, startY = e.clientY;
+      var moved = false;
+
+      function onMove(ev) {
+        lastX = ev.clientX; lastY = ev.clientY;
         if (!moved) {
-          if (Math.abs(cX - startX) < 4 && Math.abs(cY - startY) < 4) return;
+          if (Math.abs(ev.clientX - startX) < 3 && Math.abs(ev.clientY - startY) < 3) return;
           moved = true;
-          clearLongPress();
-          startDrag(chip, cX, cY);
+          startDrag(chip, ev.clientX, ev.clientY);
           scheduleMove();
         } else {
           scheduleMove();
         }
       }
-      function onEnd(ev, cX, cY) {
-        detach();
-        if (moved) {
-          endDrag(cX, cY);
-        } else {
-          // tap without move -> long-press toggle
+      function onUp(ev) {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        if (!moved) {
+          // short tap: start long-press for delete X
           clearLongPress();
           pressTimer = setTimeout(function () {
             longPressed = true;
-            document.querySelectorAll(".chip.show-x").forEach(function (n) {
-              if (n !== chip) n.classList.remove("show-x");
-            });
             chip.classList.add("show-x");
           }, 500);
+        } else {
+          endDrag(ev.clientX, ev.clientY);
         }
       }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
 
-      function onMouseMove(ev) { onMove(ev, ev.clientX, ev.clientY); }
-      function onMouseUp(ev) { onEnd(ev, ev.clientX, ev.clientY); }
-      function onTouchMove(ev) {
-        const t = ev.touches[0]; if (!t) return;
-        onMove(ev, t.clientX, t.clientY);
+    // ---- Touch: tap-to-drag, double-tap-to-edit ----
+    chip.addEventListener("touchstart", function (e) {
+      if (isDeleteBtnTarget(e.target)) return;
+
+      var t = e.touches[0];
+      if (!t) return;
+      var startX = t.clientX, startY = t.clientY;
+
+      // double-tap detection for touch
+      var now = Date.now();
+      if (lastClickChip === chip && now - lastClickTime < 350) {
+        e.preventDefault();
+        e.stopPropagation();
+        lastClickTime = 0;
+        lastClickChip = null;
+        clearLongPress();
+        handleDblClick(chip, txt);
+        return;
+      }
+      lastClickTime = now;
+      lastClickChip = chip;
+
+      if (isTextTarget(e.target)) return;
+
+      var moved = false;
+      var tapTimer = 0;
+
+      function onMove(ev) {
+        var tt = ev.touches[0]; if (!tt) return;
+        lastX = tt.clientX; lastY = tt.clientY;
+        if (!moved) {
+          if (Math.abs(tt.clientX - startX) < 4 && Math.abs(tt.clientY - startY) < 4) return;
+          moved = true;
+          clearTimeout(tapTimer);
+          startDrag(chip, tt.clientX, tt.clientY);
+          scheduleMove();
+        } else {
+          scheduleMove();
+        }
         if (ev.cancelable) ev.preventDefault();
       }
-      function onTouchEnd(ev) {
-        const t = (ev.changedTouches && ev.changedTouches[0]) || { clientX: startX, clientY: startY };
-        onEnd(ev, t.clientX, t.clientY);
+      function onEnd(ev) {
+        document.removeEventListener("touchmove", onMove, false);
+        document.removeEventListener("touchend", onEnd);
+        document.removeEventListener("touchcancel", onEnd);
+        clearTimeout(tapTimer);
+        if (!moved) {
+          // short tap: show delete X after delay
+          tapTimer = setTimeout(function () {
+            longPressed = true;
+            chip.classList.add("show-x");
+          }, 500);
+        } else {
+          var tt = (ev.changedTouches && ev.changedTouches[0]) || { clientX: startX, clientY: startY };
+          endDrag(tt.clientX, tt.clientY);
+        }
       }
-
-      function detach() {
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
-        document.removeEventListener("touchmove", onTouchMove, false);
-        document.removeEventListener("touchend", onTouchEnd);
-        document.removeEventListener("touchcancel", onTouchEnd);
-      }
-
-      if (kind === "mouse") {
-        document.addEventListener("mousemove", onMouseMove);
-        document.addEventListener("mouseup", onMouseUp);
-      } else {
-        document.addEventListener("touchmove", onTouchMove, { passive: false });
-        document.addEventListener("touchend", onTouchEnd);
-        document.addEventListener("touchcancel", onTouchEnd);
-      }
-    }
-
-    chip.addEventListener("mousedown", function (e) {
-      if (e.button !== 0) return;
-      onDown(e.clientX, e.clientY, e.target, "mouse");
-    });
-    chip.addEventListener("touchstart", function (e) {
-      const t = e.touches[0]; if (!t) return;
-      onDown(t.clientX, t.clientY, e.target, "touch");
+      document.addEventListener("touchmove", onMove, { passive: false });
+      document.addEventListener("touchend", onEnd);
+      document.addEventListener("touchcancel", onEnd);
     }, { passive: true });
+
+    // blur text -> remove editing style
+    txt.addEventListener("blur", function () {
+      chip.classList.remove("editing");
+    });
   }
 
   // Dismiss long-press delete-X when tapping elsewhere
   document.addEventListener("mousedown", function (e) {
-    if (e.target && e.target.classList && e.target.classList.contains("chip")) return;
-    if (e.target && e.target.classList && e.target.classList.contains("chip-x")) return;
+    if (e.target && e.target.classList) {
+      if (e.target.classList.contains("chip")) return;
+      if (e.target.classList.contains("chip-x")) return;
+    }
     clearLongPress();
   }, true);
   document.addEventListener("touchstart", function (e) {
-    if (e.target && e.target.classList && e.target.classList.contains("chip")) return;
-    if (e.target && e.target.classList && e.target.classList.contains("chip-x")) return;
+    if (e.target && e.target.classList) {
+      if (e.target.classList.contains("chip")) return;
+      if (e.target.classList.contains("chip-x")) return;
+    }
     clearLongPress();
   }, { passive: true, capture: true });
 
-  // ============= Toolbar / Schemes =============
+  // ============= Modal / Toolbar =============
+  function showModal() {
+    modalMask.classList.add("open");
+  }
+  function hideModal() {
+    modalMask.classList.remove("open");
+  }
+
   function showToast(msg) {
     toastEl.textContent = msg;
     toastEl.classList.add("show");
@@ -433,23 +491,23 @@
     }
     applyState({ id: null, name: "未命名方案", corners: { topLeft: "", topRight: "", bottomLeft: "", bottomRight: "" }, chips: [] });
     saveCurrent();
+    showToast("已新建空白方案");
   });
 
   saveBtn.addEventListener("click", function () {
-    const data = serializeState();
+    var data = serializeState();
     if (currentSchemeId) {
-      // overwrite
-      const all = loadSchemes();
+      var all = loadSchemes();
       all[currentSchemeId] = { id: currentSchemeId, name: currentSchemeName, corners: data.corners, chips: data.chips, ts: Date.now() };
       saveSchemes(all);
       markClean();
       showToast("已保存");
     } else {
-      const name = prompt("保存为新方案，请输入名称：", currentSchemeName === "未命名方案" ? "" : currentSchemeName);
+      var name = prompt("保存为新方案，请输入名称：", currentSchemeName === "未命名方案" ? "" : currentSchemeName);
       if (name === null) return;
-      const trimmed = (name || "").trim() || ("方案 " + new Date().toLocaleString());
-      const id = genId();
-      const all = loadSchemes();
+      var trimmed = (name || "").trim() || ("方案 " + new Date().toLocaleString());
+      var id = genId();
+      var all = loadSchemes();
       all[id] = { id: id, name: trimmed, corners: data.corners, chips: data.chips, ts: Date.now() };
       saveSchemes(all);
       currentSchemeId = id;
@@ -460,12 +518,6 @@
     }
   });
 
-  function showModal() {
-    modalMask.classList.add("open");
-  }
-  function hideModal() {
-    modalMask.classList.remove("open");
-  }
   manageBtn.addEventListener("click", function () {
     renderSchemeList();
     showModal();
@@ -476,21 +528,19 @@
   modalMask.addEventListener("click", function (e) {
     if (e.target === modalMask) hideModal();
   });
-  // ESC key closes modal
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && modalMask.classList.contains("open")) hideModal();
   });
 
   function doCreate() {
-    const name = (newNameInput.value || "").trim();
+    var name = (newNameInput.value || "").trim();
     if (!name) { newNameInput.focus(); return; }
-    const all = loadSchemes();
+    var all = loadSchemes();
     if (Object.keys(all).some(function (k) { return all[k].name === name; })) {
-      showToast("名称已存在");
-      return;
+      showToast("名称已存在"); return;
     }
-    const id = genId();
-    const data = serializeState();
+    var id = genId();
+    var data = serializeState();
     all[id] = { id: id, name: name, corners: data.corners, chips: data.chips, ts: Date.now() };
     saveSchemes(all);
     currentSchemeId = id;
@@ -507,32 +557,33 @@
   });
 
   function renderSchemeList() {
-    const all = loadSchemes();
-    const items = Object.values(all).sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+    var all = loadSchemes();
+    var items = Object.values(all).sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
     if (items.length === 0) {
       schemeListEl.innerHTML = '<div class="scheme-empty">暂无方案，输入名称后点击「创建」</div>';
       return;
     }
     schemeListEl.innerHTML = "";
     items.forEach(function (sc) {
-      const row = document.createElement("div");
+      var row = document.createElement("div");
       row.className = "scheme-item" + (sc.id === currentSchemeId ? " current" : "");
-      const info = document.createElement("div");
+      var info = document.createElement("div");
       info.className = "scheme-info";
-      const nm = document.createElement("div");
+      var nm = document.createElement("div");
       nm.className = "scheme-name";
       nm.textContent = sc.name;
-      const meta = document.createElement("div");
+      var meta = document.createElement("div");
       meta.className = "scheme-meta";
-      const dt = new Date(sc.ts || 0);
-      const lvlCount = (sc.chips || []).filter(function (c) { return c.loc && c.loc.indexOf("level:") === 0; }).length;
-      meta.textContent = dt.getFullYear() + "-" + String(dt.getMonth()+1).padStart(2,"0") + "-" + String(dt.getDate()).padStart(2,"0") + " " +
-                        String(dt.getHours()).padStart(2,"0") + ":" + String(dt.getMinutes()).padStart(2,"0") +
+      var dt = new Date(sc.ts || 0);
+      var lvlCount = (sc.chips || []).filter(function (c) { return c.loc && c.loc.indexOf("level:") === 0; }).length;
+      meta.textContent = dt.getFullYear() + "-" + pad(dt.getMonth()+1) + "-" + pad(dt.getDate()) + " " +
+                        pad(dt.getHours()) + ":" + pad(dt.getMinutes()) +
                         " · " + (sc.chips ? sc.chips.length : 0) + " 块 · " + lvlCount + " 已归类";
       info.appendChild(nm); info.appendChild(meta);
-      const actions = document.createElement("div");
+      var actions = document.createElement("div");
       actions.className = "scheme-actions";
-      const loadB = document.createElement("button");
+
+      var loadB = document.createElement("button");
       loadB.className = "tb-btn small primary";
       loadB.textContent = "加载";
       loadB.addEventListener("click", function () {
@@ -541,15 +592,16 @@
         hideModal();
         showToast("已加载「" + sc.name + "」");
       });
-      const renB = document.createElement("button");
+
+      var renB = document.createElement("button");
       renB.className = "tb-btn small";
       renB.textContent = "重命名";
       renB.addEventListener("click", function () {
-        const newName = prompt("新名称：", sc.name);
+        var newName = prompt("新名称：", sc.name);
         if (newName === null) return;
-        const trimmed = (newName || "").trim();
+        var trimmed = (newName || "").trim();
         if (!trimmed) return;
-        const all2 = loadSchemes();
+        var all2 = loadSchemes();
         if (Object.keys(all2).some(function (k) { return k !== sc.id && all2[k].name === trimmed; })) {
           showToast("名称已存在"); return;
         }
@@ -560,12 +612,13 @@
         renderSchemeList();
         showToast("已重命名");
       });
-      const delB = document.createElement("button");
+
+      var delB = document.createElement("button");
       delB.className = "tb-btn small danger";
       delB.textContent = "删除";
       delB.addEventListener("click", function () {
         if (!confirm("确定删除方案「" + sc.name + "」？")) return;
-        const all3 = loadSchemes();
+        var all3 = loadSchemes();
         delete all3[sc.id];
         saveSchemes(all3);
         if (sc.id === currentSchemeId) {
@@ -576,18 +629,21 @@
         renderSchemeList();
         showToast("已删除");
       });
+
       actions.appendChild(loadB); actions.appendChild(renB); actions.appendChild(delB);
       row.appendChild(info); row.appendChild(actions);
       schemeListEl.appendChild(row);
     });
   }
 
-  // corner text changes -> mark dirty and save
+  function pad(n) { return String(n).padStart(2, "0"); }
+
+  // corner text changes
   document.querySelectorAll(".corner-box").forEach(function (n) {
     n.addEventListener("input", function () { markDirty(); saveCurrent(); });
   });
 
-  // Save before page unload
+  // Save on background/hide
   window.addEventListener("pagehide", saveCurrent);
   window.addEventListener("beforeunload", saveCurrent);
   document.addEventListener("visibilitychange", function () {
@@ -596,15 +652,12 @@
 
   // ============= Init =============
   function init() {
-    // Ensure modal is hidden on startup (defensive)
     hideModal();
-
-    const cur = loadCurrent();
+    var cur = loadCurrent();
     if (cur && cur.chips) {
       applyState(cur);
     } else {
-      // first run: 3 default chips
-      for (let i = 0; i < 3; i++) trayItems.appendChild(makeChip());
+      for (var i = 0; i < 3; i++) trayItems.appendChild(makeChip());
       markClean();
       updateTitle();
       saveCurrent();
