@@ -3,25 +3,38 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#222" />
 <title>阶级认知自我定位</title>
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 <div class="app">
+  <!-- TOP TOOLBAR -->
+  <header class="toolbar" id="toolbar">
+    <div class="tb-left">
+      <span class="tb-title" id="schemeTitle">未命名方案</span>
+      <span class="tb-dirty" id="dirtyDot" hidden>●</span>
+    </div>
+    <div class="tb-right">
+      <button class="tb-btn" id="newBtn" title="新建方案">新建</button>
+      <button class="tb-btn" id="saveBtn" title="保存为新方案">保存</button>
+      <button class="tb-btn primary" id="manageBtn" title="管理方案">方案</button>
+    </div>
+  </header>
+
   <!-- TOP CORNERS -->
   <div class="corner top-left">
     <div class="arrow up"></div>
-    <div class="corner-box red" contenteditable="true" data-placeholder="上层"></div>
+    <div class="corner-box red" contenteditable="true" data-placeholder="上层" data-key="topLeft"></div>
   </div>
   <div class="corner top-right">
     <div class="arrow up"></div>
-    <div class="corner-box red" contenteditable="true" data-placeholder="上层"></div>
+    <div class="corner-box red" contenteditable="true" data-placeholder="上层" data-key="topRight"></div>
   </div>
 
   <!-- DIAMOND / PYRAMID -->
   <div class="diamond-wrap">
     <div class="diamond" id="diamond">
-      <!-- 4 red top levels + 5 blue bottom levels, total 9 levels -->
       <div class="level top" data-level="1"></div>
       <div class="level top" data-level="2"></div>
       <div class="level top" data-level="3"></div>
@@ -36,31 +49,40 @@
 
   <!-- BOTTOM CORNERS -->
   <div class="corner bottom-left">
-    <div class="corner-box red" contenteditable="true" data-placeholder="下层"></div>
+    <div class="corner-box red" contenteditable="true" data-placeholder="下层" data-key="bottomLeft"></div>
     <div class="arrow down"></div>
   </div>
   <div class="corner bottom-right">
-    <div class="corner-box red" contenteditable="true" data-placeholder="下层"></div>
+    <div class="corner-box red" contenteditable="true" data-placeholder="下层" data-key="bottomRight"></div>
     <div class="arrow down"></div>
   </div>
 
   <!-- BOTTOM TRAY -->
   <div class="tray" id="tray">
-    <div class="tray-items" id="trayItems">
-      <!-- default 3 items -->
-      <div class="chip" draggable="true">
-        <span class="chip-text" contenteditable="true" data-placeholder="文本"></span>
-      </div>
-      <div class="chip" draggable="true">
-        <span class="chip-text" contenteditable="true" data-placeholder="文本"></span>
-      </div>
-      <div class="chip" draggable="true">
-        <span class="chip-text" contenteditable="true" data-placeholder="文本"></span>
-      </div>
-    </div>
+    <div class="tray-items" id="trayItems"></div>
     <button class="add-btn" id="addBtn" aria-label="add">+</button>
   </div>
 </div>
+
+<!-- SCHEMES MODAL -->
+<div class="modal-mask" id="modalMask" hidden>
+  <div class="modal" role="dialog" aria-label="方案管理">
+    <div class="modal-head">
+      <span class="modal-title">方案管理</span>
+      <button class="modal-close" id="modalClose" aria-label="close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="scheme-create">
+        <input class="scheme-input" id="newNameInput" type="text" maxlength="30" placeholder="输入新方案名称" />
+        <button class="tb-btn primary" id="createSchemeBtn">创建</button>
+      </div>
+      <div class="scheme-list" id="schemeList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast" hidden></div>
 
 <script src="app.js"></script>
 </body>
