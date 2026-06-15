@@ -4,6 +4,8 @@
   // ============= Storage keys =============
   const LS_CURRENT = "cp_current_v1";
   const LS_SCHEMES = "cp_schemes_v1";
+  const SS_CURRENT = "cp_current_bk_v1";
+  const SS_SCHEMES = "cp_schemes_bk_v1";
 
   // ============= DOM refs =============
   const trayItems = document.getElementById("trayItems");
@@ -19,12 +21,16 @@
   const createSchemeBtn = document.getElementById("createSchemeBtn");
   const schemeListEl = document.getElementById("schemeList");
   const toastEl = document.getElementById("toast");
+  const storageInfoEl = document.getElementById("storageInfo");
+  const importFileInput = document.getElementById("importFileInput");
 
   // ============= State =============
   let chipCounter = 0;
   let currentSchemeId = null;
   let currentSchemeName = "未命名方案";
   let isDirty = false;
+  let storageOK = true;
+  let saveErrorCount = 0;
 
   // drag state
   let dragChip = null;
@@ -43,31 +49,108 @@
   let lastClickTime = 0;
   let lastClickChip = null;
 
-  // ============= Persistence =============
+  // ============= Persistence with multi-layer fallback =============
+  function lsAvailable() {
+    try {
+      const k = "__cp_test__";
+      localStorage.setItem(k, "1");
+      localStorage.removeItem(k);
+      return true;
+    } catch (_) { return false; }
+  }
+  function ssAvailable() {
+    try {
+      const k = "__cp_test__";
+      sessionStorage.setItem(k, "1");
+      sessionStorage.removeItem(k);
+      return true;
+    } catch (_) { return false; }
+  }
+  const hasLS = lsAvailable();
+  const hasSS = ssAvailable();
+  // in-memory mirror as final fallback
+  let memCurrent = null;
+  let memSchemes = {};
+
+  function getStore(primaryKey, backupKey) {
+    if (hasLS) return localStorage;
+    if (hasSS) return sessionStorage;
+    return null;
+  }
+  function readAll(key) {
+    try {
+      const s = getStore(key, null);
+      if (s) {
+        const raw = s.getItem(key);
+        if (raw) return JSON.parse(raw);
+      }
+      // fallback: sessionStorage
+      if (hasSS) {
+        const raw = sessionStorage.getItem(key + "_bk");
+        if (raw) return JSON.parse(raw);
+      }
+      // fallback: memory
+      if (key === LS_SCHEMES) return memSchemes;
+      if (key === LS_CURRENT) return memCurrent;
+      return null;
+    } catch (_) {
+      try { if (key === LS_SCHEMES) return memSchemes; } catch (_) {}
+      try { if (key === LS_CURRENT) return memCurrent; } catch (_) {}
+      return null;
+    }
+  }
+  function writeAll(key, val) {
+    let ok = false;
+    try {
+      const s = getStore(key, null);
+      if (s) { s.setItem(key, JSON.stringify(val)); ok = true; }
+    } catch (_) {}
+    try {
+      if (hasSS) sessionStorage.setItem(key + "_bk", JSON.stringify(val));
+    } catch (_) {}
+    try {
+      if (key === LS_SCHEMES) memSchemes = val;
+      if (key === LS_CURRENT) memCurrent = val;
+    } catch (_) {}
+    if (!ok) {
+      saveErrorCount++;
+      storageOK = false;
+    } else {
+      storageOK = true;
+    }
+    return ok;
+  }
+
   function loadSchemes() {
-    try {
-      const raw = localStorage.getItem(LS_SCHEMES);
-      if (!raw) return {};
-      const obj = JSON.parse(raw);
-      return (obj && typeof obj === "object") ? obj : {};
-    } catch (_) { return {}; }
+    var d = readAll(LS_SCHEMES);
+    return (d && typeof d === "object") ? d : {};
   }
-  function saveSchemes(obj) {
-    try { localStorage.setItem(LS_SCHEMES, JSON.stringify(obj)); } catch (_) {}
-  }
+  function saveSchemes(obj) { return writeAll(LS_SCHEMES, obj); }
   function loadCurrent() {
-    try {
-      const raw = localStorage.getItem(LS_CURRENT);
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch (_) { return null; }
+    return readAll(LS_CURRENT);
   }
   function saveCurrent() {
     const data = serializeState();
-    try { localStorage.setItem(LS_CURRENT, JSON.stringify(data)); } catch (_) {}
+    return writeAll(LS_CURRENT, data);
   }
   function genId() {
     return "sc_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
+  }
+
+  // ============= Storage info display =============
+  function updateStorageInfo() {
+    if (!storageInfoEl) return;
+    let info = "";
+    if (hasLS) {
+      info = "✓ 浏览器本地存储";
+    } else if (hasSS) {
+      info = "⚠ 会话存储（关闭后失效）";
+    } else {
+      info = "⚠ 内存存储（关闭后失效）";
+    }
+    const all = loadSchemes();
+    info += " · " + Object.keys(all).length + " 个方案";
+    storageInfoEl.textContent = info;
   }
 
   // ============= State <-> DOM =============
@@ -176,13 +259,12 @@
     trayItems.appendChild(chip);
     markDirty();
     saveCurrent();
-    // auto-focus the new chip's text
     var t = chip.querySelector(".chip-text");
     if (t) { chip.classList.add("editing"); t.focus(); }
   }
   addBtn.addEventListener("click", addChip);
 
-  // ============= Drag handlers - CLICK = DRAG, DBLCLICK = EDIT =============
+  // ============= Drag handlers =============
   function clearLongPress() {
     if (pressTimer) { clearTimeout(pressTimer); pressTimer = 0; }
     if (longPressed) {
@@ -191,21 +273,14 @@
     }
   }
 
-  function isTextTarget(t) {
-    return t && t.classList && t.classList.contains("chip-text");
-  }
-  function isDeleteBtnTarget(t) {
-    return t && t.classList && t.classList.contains("chip-x");
-  }
+  function isTextTarget(t) { return t && t.classList && t.classList.contains("chip-text"); }
+  function isDeleteBtnTarget(t) { return t && t.classList && t.classList.contains("chip-x"); }
 
   function startDrag(chip, clientX, clientY) {
     clearLongPress();
     dragChip = chip;
     chip.classList.add("dragging");
-
-    // hide delete X while dragging
     chip.classList.remove("show-x");
-
     dragOriginParent = chip.parentNode;
     dragOriginNext = chip.nextSibling;
 
@@ -318,11 +393,9 @@
     return (t && t.textContent.trim()) || "文本";
   }
 
-  // DBLCLICK handler - edit chip text
   function handleDblClick(chip, txt) {
     chip.classList.add("editing");
     txt.focus();
-    // select all text
     var range = document.createRange();
     range.selectNodeContents(txt);
     var sel = window.getSelection();
@@ -333,13 +406,11 @@
   function attachDragHandlers(chip) {
     var txt = chip.querySelector(".chip-text");
 
-    // ---- Mouse click-to-drag ----
     chip.addEventListener("mousedown", function (e) {
       if (e.button !== 0) return;
       if (isDeleteBtnTarget(e.target)) return;
 
       var now = Date.now();
-      // double-click check
       if (lastClickChip === chip && now - lastClickTime < 350) {
         e.preventDefault();
         e.stopPropagation();
@@ -372,7 +443,6 @@
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
         if (!moved) {
-          // short tap: start long-press for delete X
           clearLongPress();
           pressTimer = setTimeout(function () {
             longPressed = true;
@@ -386,7 +456,6 @@
       document.addEventListener("mouseup", onUp);
     });
 
-    // ---- Touch: tap-to-drag, double-tap-to-edit ----
     chip.addEventListener("touchstart", function (e) {
       if (isDeleteBtnTarget(e.target)) return;
 
@@ -394,7 +463,6 @@
       if (!t) return;
       var startX = t.clientX, startY = t.clientY;
 
-      // double-tap detection for touch
       var now = Date.now();
       if (lastClickChip === chip && now - lastClickTime < 350) {
         e.preventDefault();
@@ -433,7 +501,6 @@
         document.removeEventListener("touchcancel", onEnd);
         clearTimeout(tapTimer);
         if (!moved) {
-          // short tap: show delete X after delay
           tapTimer = setTimeout(function () {
             longPressed = true;
             chip.classList.add("show-x");
@@ -448,13 +515,11 @@
       document.addEventListener("touchcancel", onEnd);
     }, { passive: true });
 
-    // blur text -> remove editing style
     txt.addEventListener("blur", function () {
       chip.classList.remove("editing");
     });
   }
 
-  // Dismiss long-press delete-X when tapping elsewhere
   document.addEventListener("mousedown", function (e) {
     if (e.target && e.target.classList) {
       if (e.target.classList.contains("chip")) return;
@@ -471,12 +536,8 @@
   }, { passive: true, capture: true });
 
   // ============= Modal / Toolbar =============
-  function showModal() {
-    modalMask.classList.add("open");
-  }
-  function hideModal() {
-    modalMask.classList.remove("open");
-  }
+  function showModal() { modalMask.classList.add("open"); }
+  function hideModal() { modalMask.classList.remove("open"); }
 
   function showToast(msg) {
     toastEl.textContent = msg;
@@ -499,9 +560,10 @@
     if (currentSchemeId) {
       var all = loadSchemes();
       all[currentSchemeId] = { id: currentSchemeId, name: currentSchemeName, corners: data.corners, chips: data.chips, ts: Date.now() };
-      saveSchemes(all);
+      var ok = saveSchemes(all);
       markClean();
-      showToast("已保存");
+      showToast(ok ? "已保存" : "保存失败：存储空间不足");
+      updateStorageInfo();
     } else {
       var name = prompt("保存为新方案，请输入名称：", currentSchemeName === "未命名方案" ? "" : currentSchemeName);
       if (name === null) return;
@@ -509,17 +571,19 @@
       var id = genId();
       var all = loadSchemes();
       all[id] = { id: id, name: trimmed, corners: data.corners, chips: data.chips, ts: Date.now() };
-      saveSchemes(all);
+      var ok2 = saveSchemes(all);
       currentSchemeId = id;
       currentSchemeName = trimmed;
       markClean();
       updateTitle();
-      showToast("已保存为「" + trimmed + "」");
+      showToast(ok2 ? ("已保存为「" + trimmed + "」") : "已保存到内存（存储不可用）");
+      updateStorageInfo();
     }
   });
 
   manageBtn.addEventListener("click", function () {
     renderSchemeList();
+    updateStorageInfo();
     showModal();
     newNameInput.value = "";
     newNameInput.focus();
@@ -549,12 +613,118 @@
     updateTitle();
     newNameInput.value = "";
     renderSchemeList();
+    updateStorageInfo();
     showToast("已保存为「" + name + "」");
   }
   createSchemeBtn.addEventListener("click", doCreate);
   newNameInput.addEventListener("keydown", function (e) {
     if (e.key === "Enter") { e.preventDefault(); doCreate(); }
   });
+
+  // Export / Import / Clear
+  const exportBtn = document.getElementById("exportBtn");
+  const importBtn = document.getElementById("importBtn");
+  const clearAllBtn = document.getElementById("clearAllBtn");
+
+  if (exportBtn) {
+    exportBtn.addEventListener("click", function () {
+      var all = loadSchemes();
+      var payload = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        schemes: all
+      };
+      var json = JSON.stringify(payload, null, 2);
+      try {
+        var blob = new Blob([json], { type: "application/json;charset=utf-8" });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = "classpyramid-schemes-" + new Date().toISOString().slice(0,10) + ".json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        showToast("已导出 " + Object.keys(all).length + " 个方案");
+      } catch (e) {
+        // Fallback: open in new window
+        var dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(json);
+        window.open(dataUri, "_blank");
+        showToast("已在新窗口打开 JSON");
+      }
+    });
+  }
+
+  if (importBtn && importFileInput) {
+    importBtn.addEventListener("click", function () { importFileInput.click(); });
+    importFileInput.addEventListener("change", function (e) {
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function (ev) {
+        try {
+          var payload = JSON.parse(ev.target.result);
+          var schemes = payload && payload.schemes;
+          if (!schemes || typeof schemes !== "object") {
+            showToast("无效的 JSON 格式"); return;
+          }
+          var all = loadSchemes();
+          var added = 0, skipped = 0;
+          Object.keys(schemes).forEach(function (k) {
+            var s = schemes[k];
+            if (!s || !s.name) { skipped++; return; }
+            // ensure unique name
+            var origName = s.name;
+            var n = origName;
+            var i = 1;
+            while (Object.keys(all).some(function (kk) { return all[kk].name === n; })) {
+              n = origName + " (" + (i++) + ")";
+            }
+            var newId = genId();
+            all[newId] = {
+              id: newId,
+              name: n,
+              corners: s.corners || {},
+              chips: Array.isArray(s.chips) ? s.chips : [],
+              ts: Date.now()
+            };
+            added++;
+          });
+          saveSchemes(all);
+          renderSchemeList();
+          updateStorageInfo();
+          showToast("导入完成 +" + added + (skipped ? " / 跳过 " + skipped : ""));
+        } catch (err) {
+          showToast("JSON 解析失败");
+        }
+        importFileInput.value = "";
+      };
+      reader.readAsText(file, "utf-8");
+    });
+  }
+
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener("click", function () {
+      if (!confirm("确定清空所有方案？此操作不可恢复（建议先导出备份）。")) return;
+      if (!confirm("再次确认：清空后无法找回，确认继续？")) return;
+      try {
+        if (hasLS) { localStorage.removeItem(LS_SCHEMES); localStorage.removeItem(LS_CURRENT); }
+        if (hasSS) { sessionStorage.removeItem(SS_SCHEMES); sessionStorage.removeItem(SS_CURRENT); }
+      } catch (_) {}
+      memSchemes = {};
+      memCurrent = null;
+      currentSchemeId = null;
+      currentSchemeName = "未命名方案";
+      clearChips();
+      for (var i = 0; i < 3; i++) trayItems.appendChild(makeChip());
+      document.querySelectorAll(".corner-box").forEach(function (n) { n.textContent = ""; });
+      markClean();
+      updateTitle();
+      renderSchemeList();
+      updateStorageInfo();
+      showToast("已清空所有数据");
+    });
+  }
 
   function renderSchemeList() {
     var all = loadSchemes();
@@ -627,6 +797,7 @@
           updateTitle();
         }
         renderSchemeList();
+        updateStorageInfo();
         showToast("已删除");
       });
 
@@ -638,12 +809,18 @@
 
   function pad(n) { return String(n).padStart(2, "0"); }
 
-  // corner text changes
   document.querySelectorAll(".corner-box").forEach(function (n) {
     n.addEventListener("input", function () { markDirty(); saveCurrent(); });
   });
 
-  // Save on background/hide
+  // periodic auto-save every 5s (defensive)
+  setInterval(function () {
+    if (isDirty) {
+      saveCurrent();
+      updateStorageInfo();
+    }
+  }, 5000);
+
   window.addEventListener("pagehide", saveCurrent);
   window.addEventListener("beforeunload", saveCurrent);
   document.addEventListener("visibilitychange", function () {
@@ -653,6 +830,7 @@
   // ============= Init =============
   function init() {
     hideModal();
+    updateStorageInfo();
     var cur = loadCurrent();
     if (cur && cur.chips) {
       applyState(cur);

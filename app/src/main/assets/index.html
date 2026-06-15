@@ -71,6 +71,11 @@
       <span class="modal-title">方案管理</span>
       <button class="modal-close" id="modalClose" aria-label="关闭">×</button>
     </div>
+    <div class="modal-head-tools">
+      <button class="tb-btn small" id="exportBtn" title="导出为 JSON 文件">导出</button>
+      <button class="tb-btn small" id="importBtn" title="从 JSON 文件导入">导入</button>
+      <button class="tb-btn small danger" id="clearAllBtn" title="清空所有数据">清空</button>
+    </div>
     <div class="modal-body">
       <div class="scheme-create">
         <input class="scheme-input" id="newNameInput" type="text" maxlength="30" placeholder="输入新方案名称" />
@@ -78,8 +83,12 @@
       </div>
       <div class="scheme-list" id="schemeList"></div>
     </div>
+    <div class="modal-foot">
+      <span class="storage-info" id="storageInfo">检测中...</span>
+    </div>
   </div>
 </div>
+<input type="file" id="importFileInput" accept="application/json,.json" style="display:none" />
 
 <!-- TOAST -->
 <div class="toast" id="toast" style="display:none"></div>
