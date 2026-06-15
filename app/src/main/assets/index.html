@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>阶级认知自我定位</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="app">
+  <!-- TOP CORNERS -->
+  <div class="corner top-left">
+    <div class="arrow up"></div>
+    <div class="corner-box red" contenteditable="true" data-placeholder="上层"></div>
+  </div>
+  <div class="corner top-right">
+    <div class="arrow up"></div>
+    <div class="corner-box red" contenteditable="true" data-placeholder="上层"></div>
+  </div>
+
+  <!-- DIAMOND / PYRAMID -->
+  <div class="diamond-wrap">
+    <div class="diamond" id="diamond">
+      <!-- 4 red top levels + 5 blue bottom levels, total 9 levels -->
+      <div class="level top" data-level="1"></div>
+      <div class="level top" data-level="2"></div>
+      <div class="level top" data-level="3"></div>
+      <div class="level top" data-level="4"></div>
+      <div class="level top widest" data-level="5"></div>
+      <div class="level bottom" data-level="6"></div>
+      <div class="level bottom" data-level="7"></div>
+      <div class="level bottom" data-level="8"></div>
+      <div class="level bottom" data-level="9"></div>
+    </div>
+  </div>
+
+  <!-- BOTTOM CORNERS -->
+  <div class="corner bottom-left">
+    <div class="corner-box red" contenteditable="true" data-placeholder="下层"></div>
+    <div class="arrow down"></div>
+  </div>
+  <div class="corner bottom-right">
+    <div class="corner-box red" contenteditable="true" data-placeholder="下层"></div>
+    <div class="arrow down"></div>
+  </div>
+
+  <!-- BOTTOM TRAY -->
+  <div class="tray" id="tray">
+    <div class="tray-items" id="trayItems">
+      <!-- default 3 items -->
+      <div class="chip" draggable="true">
+        <span class="chip-text" contenteditable="true" data-placeholder="文本"></span>
+      </div>
+      <div class="chip" draggable="true">
+        <span class="chip-text" contenteditable="true" data-placeholder="文本"></span>
+      </div>
+      <div class="chip" draggable="true">
+        <span class="chip-text" contenteditable="true" data-placeholder="文本"></span>
+      </div>
+    </div>
+    <button class="add-btn" id="addBtn" aria-label="add">+</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+build/
+build_manual/
+local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Android
+*.apk
+*.apk.idsig
+*.aab
+*.dex
+captures/
+
+# Keystore (do not commit signing material)
+*.keystore
+*.jks
+key.properties
+
+# Logs
+*.log
