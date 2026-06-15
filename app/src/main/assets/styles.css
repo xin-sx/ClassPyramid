@@ -394,13 +394,14 @@ body { position: fixed; inset: 0; }
   inset: 0;
   z-index: 100;
   background: rgba(0,0,0,.45);
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   padding: 16px;
   -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
 }
+.modal-mask.open { display: flex; }
 .modal {
   width: 100%;
   max-width: 460px;
@@ -504,4 +505,6 @@ body { position: fixed; inset: 0; }
   max-width: 80vw;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: none;
 }
+.toast.show { display: block; }

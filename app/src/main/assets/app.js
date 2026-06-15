@@ -137,7 +137,7 @@
 
   function updateTitle() {
     schemeTitle.textContent = currentSchemeName || "未命名方案";
-    dirtyDot.hidden = !isDirty;
+    dirtyDot.style.display = isDirty ? "" : "none";
   }
   function markDirty() { if (!isDirty) { isDirty = true; updateTitle(); } }
   function markClean() { isDirty = false; updateTitle(); }
@@ -422,9 +422,9 @@
   // ============= Toolbar / Schemes =============
   function showToast(msg) {
     toastEl.textContent = msg;
-    toastEl.hidden = false;
+    toastEl.classList.add("show");
     if (showToast._t) clearTimeout(showToast._t);
-    showToast._t = setTimeout(function () { toastEl.hidden = true; }, 1800);
+    showToast._t = setTimeout(function () { toastEl.classList.remove("show"); }, 1800);
   }
 
   newBtn.addEventListener("click", function () {
@@ -460,14 +460,25 @@
     }
   });
 
+  function showModal() {
+    modalMask.classList.add("open");
+  }
+  function hideModal() {
+    modalMask.classList.remove("open");
+  }
   manageBtn.addEventListener("click", function () {
     renderSchemeList();
-    modalMask.hidden = false;
+    showModal();
     newNameInput.value = "";
+    newNameInput.focus();
   });
-  modalClose.addEventListener("click", function () { modalMask.hidden = true; });
+  modalClose.addEventListener("click", hideModal);
   modalMask.addEventListener("click", function (e) {
-    if (e.target === modalMask) modalMask.hidden = true;
+    if (e.target === modalMask) hideModal();
+  });
+  // ESC key closes modal
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && modalMask.classList.contains("open")) hideModal();
   });
 
   function doCreate() {
@@ -527,7 +538,7 @@
       loadB.addEventListener("click", function () {
         applyState(sc);
         saveCurrent();
-        modalMask.hidden = true;
+        hideModal();
         showToast("已加载「" + sc.name + "」");
       });
       const renB = document.createElement("button");
@@ -585,6 +596,9 @@
 
   // ============= Init =============
   function init() {
+    // Ensure modal is hidden on startup (defensive)
+    hideModal();
+
     const cur = loadCurrent();
     if (cur && cur.chips) {
       applyState(cur);
